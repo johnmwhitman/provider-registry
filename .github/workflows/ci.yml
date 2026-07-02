@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate TOML files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate all TOML files parse
+        run: |
+          python3 -c "
+          import tomllib
+          import sys
+          from pathlib import Path
+          errors = []
+          count = 0
+          for path in sorted(Path('dist').glob('*.toml')):
+              try:
+                  with path.open('rb') as f:
+                      data = tomllib.load(f)
+                  count += 1
+                  # Required fields per the README spec
+                  required = ['id', 'name', 'auth', 'api_base', 'models']
+                  missing = [k for k in required if k not in data]
+                  if missing:
+                      errors.append(f'{path}: missing required fields {missing}')
+                      continue
+                  if not isinstance(data.get('models'), list) or len(data['models']) == 0:
+                      errors.append(f'{path}: models must be a non-empty list')
+                  for m in data.get('models', []):
+                      if 'id' not in m or 'name' not in m:
+                          errors.append(f'{path}: model missing id or name: {m}')
+              except tomllib.TOMLDecodeError as e:
+                  errors.append(f'{path}: TOML parse error: {e}')
+          print(f'Validated {count} TOML file(s) in dist/')
+          if errors:
+              print('FAILURES:')
+              for e in errors:
+                  print(f'  - {e}')
+              sys.exit(1)
+          print('OK: all TOML files valid')
+          "
+
+      - name: Check for duplicate provider IDs
+        run: |
+          python3 -c "
+          import tomllib
+          from pathlib import Path
+          seen = set()
+          dupes = []
+          for path in sorted(Path('dist').glob('*.toml')):
+              with path.open('rb') as f:
+                  data = tomllib.load(f)
+              pid = data.get('id')
+              if pid in seen:
+                  dupes.append(pid)
+              seen.add(pid)
+          if dupes:
+              print(f'DUPLICATE IDs: {dupes}')
+              exit(1)
+          print(f'OK: {len(seen)} unique provider IDs')
+          "

@@ -20,4 +20,4 @@ Each `.toml` file defines a provider's models, auth, and endpoints.
 
 ## License
 
-Apache 2.0
+MIT
